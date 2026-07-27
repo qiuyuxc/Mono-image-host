@@ -314,6 +314,11 @@ function json(data, status = 200, extraHeaders = {}) {
 
 async function proxyTelegramFile(fileId, botToken, database) {
   if (!fileId || !botToken) return new Response('Not found', { status: 404 })
+  const stored = await database.prepare('SELECT 1 FROM files WHERE file_id = ? LIMIT 1').bind(fileId).first()
+  if (!stored) return new Response('Not found', {
+    status: 404,
+    headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }
+  })
   let filePath = ''
   try {
     const cached = await database.prepare('SELECT file_path FROM file_path_cache WHERE file_id = ? AND expires_at > ? LIMIT 1').bind(fileId, Date.now()).first()
@@ -338,7 +343,7 @@ async function proxyTelegramFile(fileId, botToken, database) {
   const headers = new Headers(response.headers)
   headers.set('Content-Type', getContentType(extension))
   headers.set('Content-Disposition', 'inline')
-  headers.set('Cache-Control', 'public, max-age=31536000, immutable')
+  headers.set('Cache-Control', 'public, max-age=300, must-revalidate')
   headers.set('Access-Control-Allow-Origin', '*')
   headers.set('X-Content-Type-Options', 'nosniff')
   headers.set('Content-Security-Policy', "default-src 'none'; sandbox")
