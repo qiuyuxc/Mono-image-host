@@ -1,0 +1,33 @@
+{
+  "name": "mono-image-host",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:api": "node local-server.js",
+    "dev:local": "node local-server.js & vite",
+    "build": "vite build",
+    "check": "eslint . && vitest run",
+    "worker:dev": "npx wrangler dev",
+    "db:migrate": "npx wrangler d1 migrations apply image-host --local",
+    "db:migrate:remote": "npx wrangler d1 migrations apply image-host --remote",
+    "deploy": "npm run build && npx wrangler deploy"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "6.0.4",
+    "lucide-react": "1.27.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "vite": "8.1.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@tailwindcss/vite": "4.3.3",
+    "eslint": "10.8.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-react-refresh": "0.5.3",
+    "globals": "17.8.0",
+    "tailwindcss": "4.3.3",
+    "vitest": "4.1.10"
+  }
+}
