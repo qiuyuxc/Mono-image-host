@@ -11,7 +11,7 @@ run_worker_first = ["/api/*", "/dl/*", "/webhook"]
 [[d1_databases]]
 binding = "DB"
 database_name = "image-host"
-database_id = "replace-with-your-d1-database-id"
+database_id = "1a56f6f5-e29e-442e-887a-52e5a4103233"
 migrations_dir = "migrations"
 
 [vars]
