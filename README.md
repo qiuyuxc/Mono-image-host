@@ -33,19 +33,29 @@ npm run build
 
 ## Cloudflare 部署
 
-### 1. 创建 D1
+### 1. 登录 Cloudflare
 
 ```bash
-npx wrangler d1 create image-host
+npx wrangler login
 ```
 
-把命令返回的 `database_id` 写入 `wrangler.toml`，再执行：
+### 2. 一键部署
+
+```bash
+npm run deploy
+```
+
+部署脚本会按 `database_name` 自动查找 D1；不存在时创建数据库，然后自动注入临时 UUID、执行 `migrations/` 中的迁移并部署 Worker。无需手动创建数据表，也无需修改或提交 `database_id`。
+
+如果只需要在远程数据库执行迁移：
 
 ```bash
 npm run db:migrate:remote
 ```
 
-### 2. 设置 Secrets
+### 3. 设置 Secrets
+
+首次部署完成后设置：
 
 ```bash
 npx wrangler secret put TG_BOT_TOKEN
@@ -67,12 +77,6 @@ npx wrangler secret put ALLOWED_USERS
 ```
 
 `ALLOWED_USERS` 是允许使用 Bot webhook 的 Telegram 用户 ID 或聊天 ID，多个值用逗号分隔。
-
-### 3. 部署
-
-```bash
-npm run deploy
-```
 
 Worker 会根据当前请求域名生成图片直链。若需要固定到自定义域名，可在 Cloudflare 中绑定域名，并在 `wrangler.toml` 的 `[vars]` 中配置 `DOMAIN`。
 

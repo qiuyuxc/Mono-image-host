@@ -10,8 +10,8 @@
     "check": "eslint . && vitest run",
     "worker:dev": "npx wrangler dev",
     "db:migrate": "npx wrangler d1 migrations apply image-host --local",
-    "db:migrate:remote": "npx wrangler d1 migrations apply image-host --remote",
-    "deploy": "npm run build && npx wrangler deploy"
+    "db:migrate:remote": "node scripts/setup-d1.mjs --migrate-only",
+    "deploy": "npm run build && node scripts/setup-d1.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "6.0.4",
