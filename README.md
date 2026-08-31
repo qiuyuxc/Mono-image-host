@@ -76,6 +76,9 @@ openssl rand -hex 32
 npx wrangler secret put ALLOWED_USERS
 ```
 
+`STORAGE_CHAT_ID` 建议使用一个群聊：把 Bot 设为群管理员并开启“删除消息”权限后，可删除任意时间的消息。
+否则 Telegram 只允许删除 48 小时内的消息，老图片将无法从 Telegram 侧真正删除。
+
 `ALLOWED_USERS` 是允许使用 Bot webhook 的 Telegram 用户 ID 或聊天 ID，多个值用逗号分隔。
 
 Worker 会根据当前请求域名生成图片直链。若需要固定到自定义域名，可在 Cloudflare 中绑定域名，并在 `wrangler.toml` 的 `[vars]` 中配置 `DOMAIN`。

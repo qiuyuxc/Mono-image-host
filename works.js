@@ -136,23 +136,24 @@ async function uploadFile(request, config) {
   const result = await response.json().catch(() => null)
   if (!response.ok || !result?.ok) throw httpError(502, 'Telegram 暂时无法保存这张图片。')
 
-  const document = result.result.document
-  const proxyUrl = `https://${config.domain}/dl/${document.file_id}`
+  const saved = result.result.document || result.result.sticker
+  if (!saved?.file_id) throw httpError(502, 'Telegram 暂时无法保存这张图片。')
+  const proxyUrl = `https://${config.domain}/dl/${saved.file_id}`
   const uploadId = `web_${crypto.randomUUID()}`
   const width = positiveInt(form.get('width'))
   const height = positiveInt(form.get('height'))
   const createdAt = Date.now()
   const inserted = await config.database.prepare(
     'INSERT INTO files (url, file_id, message_id, file_name, file_size, mime_type, storage_type, category_id, chat_id, is_chunked, chunk_count, upload_id, width, height, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, 0, 0, ?, ?, ?, ?)'
-  ).bind(proxyUrl, document.file_id, result.result.message_id, fileName, document.file_size || file.size, mimeType, 'telegram', String(config.storageChatId), uploadId, width, height, createdAt).run()
+  ).bind(proxyUrl, saved.file_id, result.result.message_id, fileName, saved.file_size || file.size, mimeType, 'telegram', String(config.storageChatId), uploadId, width, height, createdAt).run()
 
   return json({
     file: {
       id: inserted.meta?.last_row_id,
       url: proxyUrl,
       file_name: fileName,
-      file_size: document.file_size || file.size,
-      sizeLabel: formatSize(document.file_size || file.size),
+      file_size: saved.file_size || file.size,
+      sizeLabel: formatSize(saved.file_size || file.size),
       mime_type: mimeType,
       width,
       height,
@@ -170,7 +171,9 @@ async function deleteFile(id, config) {
     body: JSON.stringify({ chat_id: file.chat_id, message_id: file.message_id })
   })
   const result = await response.json().catch(() => null)
-  if (!response.ok || !result?.ok) throw httpError(502, 'Telegram 删除失败，记录已保留，请稍后重试。')
+  if (!response.ok || !result?.ok) {
+    if (!telegramMessageGone(result)) throw httpError(502, 'Telegram 删除失败，记录已保留，请稍后重试。')
+  }
   await config.database.batch([
     config.database.prepare('DELETE FROM file_path_cache WHERE file_id = ?').bind(file.file_id),
     config.database.prepare('DELETE FROM files WHERE id = ?').bind(id)
@@ -362,7 +365,7 @@ async function handleWebhook(request, config, ctx) {
       return new Response('OK')
     }
   }
-  const file = message.document || message.video || message.audio || message.photo?.at(-1) || message.voice || message.video_note
+  const file = message.document || message.sticker || message.video || message.audio || message.photo?.at(-1) || message.voice || message.video_note
   if (file) ctx.waitUntil(storeWebhookFile(message.chat.id, message.message_id, file, config))
   return new Response('OK')
 }
@@ -416,7 +419,15 @@ function formatSize(bytes) {
   return `${value.toFixed(index ? 1 : 0)} ${units[index]}`
 }
 
-export { decodeCursor, detectImageType, formatSize, normalizeImageName }
+function telegramMessageGone(result) {
+  if (!result) return false
+  if (result.error_code === 404) return true
+  if (result.error_code !== 400) return false
+  const description = String(result.description || '')
+  return /message[^]*not found|can'?t be deleted|too old/i.test(description)
+}
+
+export { decodeCursor, deleteFile, detectImageType, formatSize, normalizeImageName, telegramMessageGone, uploadFile }
 
 function getContentType(extension) {
   return {

@@ -1,5 +1,25 @@
-import { describe, expect, it } from 'vitest'
-import { decodeCursor, detectImageType, formatSize, normalizeImageName } from '../works.js'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { decodeCursor, deleteFile, detectImageType, formatSize, normalizeImageName, telegramMessageGone, uploadFile } from '../works.js'
+
+const webpBytes = () => new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50])
+
+const makeUploadConfig = () => ({
+  tgBotToken: 'token',
+  storageChatId: 'chat-id',
+  domain: 'img.example.com',
+  webUploadMaxMB: 20,
+  database: {
+    prepare: () => ({ bind: () => ({ run: async () => ({ meta: { last_row_id: 7 } }) }) })
+  }
+})
+
+const uploadRequest = (name, bytes, type) => {
+  const form = new FormData()
+  form.append('file', new File([bytes], name, { type }))
+  return new Request('https://img.example.com/api/files', { method: 'POST', body: form })
+}
+
+afterEach(() => vi.unstubAllGlobals())
 
 describe('worker helpers', () => {
   it('detects supported image signatures', () => {
@@ -18,5 +38,77 @@ describe('worker helpers', () => {
 
   it('rejects malformed cursors', () => {
     expect(() => decodeCursor('not-a-cursor')).toThrow('分页游标无效')
+  })
+})
+
+describe('telegramMessageGone', () => {
+  it('treats already-deleted Telegram messages as gone', () => {
+    expect(telegramMessageGone({ ok: false, error_code: 400, description: 'Bad Request: message to delete not found' })).toBe(true)
+    expect(telegramMessageGone({ ok: false, error_code: 400, description: "Bad Request: message can't be deleted for everyone" })).toBe(true)
+    expect(telegramMessageGone({ ok: false, error_code: 400, description: 'Bad Request: message is too old to be deleted' })).toBe(true)
+    expect(telegramMessageGone({ ok: false, error_code: 404, description: 'Not Found' })).toBe(true)
+  })
+
+  it('keeps genuine API failures as errors', () => {
+    expect(telegramMessageGone(null)).toBe(false)
+    expect(telegramMessageGone({ ok: false, error_code: 429, description: 'Too Many Requests: retry after 5' })).toBe(false)
+    expect(telegramMessageGone({ ok: false, error_code: 403, description: 'Forbidden: bot was kicked from the group chat' })).toBe(false)
+    expect(telegramMessageGone({ ok: false, error_code: 400, description: 'Bad Request: chat not found' })).toBe(false)
+  })
+})
+
+describe('uploadFile', () => {
+  it('stores the sticker file_id when Telegram returns a sticker for webp', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      ok: true,
+      result: { message_id: 42, sticker: { file_id: 'sticker-id', file_size: 1024 } }
+    }), { status: 200 })))
+    const result = await (await uploadFile(uploadRequest('sample.webp', webpBytes(), 'image/webp'), makeUploadConfig())).json()
+    expect(result.file.url).toBe('https://img.example.com/dl/sticker-id')
+    expect(result.file.file_size).toBe(1024)
+    expect(result.file.id).toBe(7)
+  })
+
+  it('still uses the document file_id for regular uploads', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      ok: true,
+      result: { message_id: 43, document: { file_id: 'doc-id', file_size: 2048 } }
+    }), { status: 200 })))
+    const result = await (await uploadFile(uploadRequest('sample.jpg', Uint8Array.from([0xff, 0xd8, 0xff, 0x01]), 'image/jpeg'), makeUploadConfig())).json()
+    expect(result.file.url).toBe('https://img.example.com/dl/doc-id')
+    expect(result.file.file_size).toBe(2048)
+  })
+})
+
+describe('deleteFile', () => {
+  const makeDeleteConfig = onBatch => ({
+    tgBotToken: 'token',
+    database: {
+      prepare: () => ({ bind: () => ({ first: async () => ({ id: 1, file_id: 'fid', message_id: 42, chat_id: 'chat' }) }) }),
+      batch: async calls => onBatch(calls)
+    }
+  })
+
+  it('removes the record when the message was already deleted in Telegram', async () => {
+    let batchCalls = 0
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      ok: false,
+      error_code: 400,
+      description: 'Bad Request: message to delete not found'
+    }), { status: 400 })))
+    const response = await deleteFile(1, makeDeleteConfig(calls => { batchCalls = calls.length }))
+    expect(batchCalls).toBe(2)
+    expect(response.status).toBe(200)
+  })
+
+  it('keeps the record when Telegram deletion fails for a real reason', async () => {
+    let batchCalls = 0
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      ok: false,
+      error_code: 429,
+      description: 'Too Many Requests: retry after 3'
+    }), { status: 429 })))
+    await expect(deleteFile(1, makeDeleteConfig(calls => { batchCalls = calls.length }))).rejects.toMatchObject({ status: 502 })
+    expect(batchCalls).toBe(0)
   })
 })
