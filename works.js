@@ -21,6 +21,10 @@ export default {
       return proxyTelegramFile(url.pathname.slice(4), config.tgBotToken, config.database)
     }
 
+    if (url.pathname === '/random' && request.method === 'GET') {
+      return randomImage(url, config)
+    }
+
     if (url.pathname === '/webhook' && request.method === 'POST') {
       return handleWebhook(request, config, ctx)
     }
@@ -42,6 +46,9 @@ async function handleApi(request, url, config) {
       const session = await readSession(request, config)
       return json(session ? { authenticated: true, csrf: session.csrf } : { authenticated: false })
     }
+    if (url.pathname === '/api/files' && request.method === 'GET') {
+      return listFiles(url, config)
+    }
 
     const session = await readSession(request, config)
     if (!session) return json({ error: '会话已过期，请重新登录。' }, 401)
@@ -49,9 +56,6 @@ async function handleApi(request, url, config) {
     if (url.pathname === '/api/auth/logout' && request.method === 'POST') {
       requireMutationAuth(request, session, url)
       return json({ ok: true }, 200, { 'Set-Cookie': clearSessionCookie() })
-    }
-    if (url.pathname === '/api/files' && request.method === 'GET') {
-      return listFiles(url, config)
     }
     if (url.pathname === '/api/files' && request.method === 'POST') {
       requireMutationAuth(request, session, url)
@@ -112,6 +116,20 @@ async function listFiles(url, config) {
     files: files.map(file => ({ ...file, sizeLabel: formatSize(file.file_size) })),
     nextCursor: hasMore && last ? encodeCursor(last.created_at, last.id) : null
   })
+}
+
+async function randomImage(url, config) {
+  const orientation = url.searchParams.get('o')?.toLowerCase()
+  if (orientation && !['h', 'v'].includes(orientation)) throw httpError(400, 'o 仅支持 h（横图）或 v（竖图）。')
+  const orientationFilter = orientation === 'h' ? ' AND width >= height' : orientation === 'v' ? ' AND width <= height' : ''
+  const file = await config.database.prepare(
+    `SELECT id, url, file_name, file_size, mime_type, width, height, created_at FROM files WHERE mime_type LIKE 'image/%'${orientationFilter} ORDER BY RANDOM() LIMIT 1`
+  ).first()
+  if (!file) throw httpError(404, '还没有图片。')
+  if (url.searchParams.has('json')) {
+    return json({ url: file.url, file_name: file.file_name, sizeLabel: formatSize(file.file_size), mime_type: file.mime_type, width: file.width, height: file.height, created_at: file.created_at })
+  }
+  return new Response(null, { status: 302, headers: { Location: file.url, 'Cache-Control': 'no-store' } })
 }
 
 async function uploadFile(request, config) {
@@ -427,7 +445,7 @@ function telegramMessageGone(result) {
   return /message[^]*not found|can'?t be deleted|too old/i.test(description)
 }
 
-export { decodeCursor, deleteFile, detectImageType, formatSize, normalizeImageName, telegramMessageGone, uploadFile }
+export { decodeCursor, deleteFile, detectImageType, formatSize, normalizeImageName, randomImage, telegramMessageGone, uploadFile }
 
 function getContentType(extension) {
   return {

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ArrowRight, LockKeyhole } from 'lucide-react'
 
-export default function Login({ onLogin }) {
+export default function Login({ onLogin, onCancel }) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -25,7 +25,11 @@ export default function Login({ onLogin }) {
       <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-[1400px] flex-col">
         <header className="flex h-12 items-center justify-between border-b border-ink/10">
           <a href="/" className="text-[15px] font-semibold tracking-[-0.01em]">Mono</a>
-          <span className="flex items-center gap-2 text-xs text-muted"><LockKeyhole size={14} />私人空间</span>
+          {onCancel ? (
+            <button type="button" onClick={onCancel} className="text-xs text-muted hover:text-ink">返回画廊</button>
+          ) : (
+            <span className="flex items-center gap-2 text-xs text-muted"><LockKeyhole size={14} />私人空间</span>
+          )}
         </header>
         <section className="grid flex-1 items-center py-16 lg:grid-cols-[1.15fr_0.85fr] lg:gap-24">
           <div className="max-w-2xl">

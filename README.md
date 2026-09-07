@@ -6,8 +6,10 @@
 
 - 管理密码登录，HMAC 签名 HttpOnly Cookie
 - CSRF 与同源写操作保护
+- 画廊公开浏览，上传与删除需登录
 - 多图拖拽上传，支持 JPG、PNG、GIF、WebP
 - 响应式瀑布流、公开图片直链和链接复制
+- 随机图接口 `/random`，支持横竖图过滤和 JSON 输出
 - 同步删除 Telegram 消息与 D1 记录
 - Telegram Bot webhook 入库
 - Node SQLite 本地测试后端
@@ -82,6 +84,28 @@ npx wrangler secret put ALLOWED_USERS
 `ALLOWED_USERS` 是允许使用 Bot webhook 的 Telegram 用户 ID 或聊天 ID，多个值用逗号分隔。
 
 Worker 会根据当前请求域名生成图片直链。若需要固定到自定义域名，可在 Cloudflare 中绑定域名，并在 `wrangler.toml` 的 `[vars]` 中配置 `DOMAIN`。
+
+## 随机图接口
+
+```
+GET /random              # 302 跳转到一张随机图片
+GET /random?o=h          # 只抽横图（宽 ≥ 高）
+GET /random?o=v          # 只抽竖图（高 ≥ 宽）
+GET /random?json         # 返回随机图片的元数据 JSON
+```
+
+`o` 与 `json` 可组合使用，例如 `GET /random?o=v&json`。方形图同时匹配横竖两个方向。需要固定图片时请使用画廊里的直链。方向过滤依赖图片的宽高记录：Web 上传会自动记录；Bot webhook 上传时仅当 Telegram 返回了宽高信息（如照片）才有记录，无宽高的图片不会出现在方向过滤结果中。
+
+### 同一页面嵌入多张随机图
+
+浏览器会把同一页面中 URL 完全相同的并发请求合并成一次，导致多个位置显示同一张图。若需要每处各自随机，给每处引用附加任意不同的参数即可（服务端会忽略未知参数）：
+
+```html
+<img src="/random?o=h&r=1">
+<img src="/random?o=h&r=2">
+```
+
+动态页面可直接用时间戳生成唯一参数：`/random?o=h&r=${Date.now()}`。
 
 ### 4. Telegram webhook
 

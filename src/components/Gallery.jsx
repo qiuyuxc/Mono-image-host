@@ -1,6 +1,6 @@
 import ImageItem from './ImageItem'
 
-export default function Gallery({ files, loading, nextCursor, onLoadMore, onCopy, onDelete }) {
+export default function Gallery({ files, loading, nextCursor, onLoadMore, onCopy, onDelete, canManage }) {
   if (!loading && files.length === 0) {
     return (
       <section className="grid min-h-[42vh] place-items-center py-24 text-center">
@@ -15,7 +15,7 @@ export default function Gallery({ files, loading, nextCursor, onLoadMore, onCopy
   return (
     <section aria-label="图片画廊" className="py-5 sm:py-7">
       <div className="columns-1 gap-4 sm:columns-2 lg:columns-3 2xl:columns-4">
-        {files.map((file, index) => <ImageItem key={file.id} file={file} index={index} onCopy={onCopy} onDelete={onDelete} />)}
+        {files.map((file, index) => <ImageItem key={file.id} file={file} index={index} onCopy={onCopy} onDelete={onDelete} canManage={canManage} />)}
       </div>
       {loading && <p className="py-12 text-center text-sm text-muted" role="status">正在整理图片…</p>}
       {nextCursor && !loading && (

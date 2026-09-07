@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { decodeCursor, deleteFile, detectImageType, formatSize, normalizeImageName, telegramMessageGone, uploadFile } from '../works.js'
+import { decodeCursor, deleteFile, detectImageType, formatSize, normalizeImageName, randomImage, telegramMessageGone, uploadFile } from '../works.js'
 
 const webpBytes = () => new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50])
 
@@ -77,6 +77,67 @@ describe('uploadFile', () => {
     const result = await (await uploadFile(uploadRequest('sample.jpg', Uint8Array.from([0xff, 0xd8, 0xff, 0x01]), 'image/jpeg'), makeUploadConfig())).json()
     expect(result.file.url).toBe('https://img.example.com/dl/doc-id')
     expect(result.file.file_size).toBe(2048)
+  })
+})
+
+describe('randomImage', () => {
+  const makeConfig = (file, onSql) => ({
+    database: {
+      prepare: sql => {
+        if (onSql) onSql(sql)
+        return { first: async () => file }
+      }
+    }
+  })
+  const randomUrl = params => new URL(`https://img.example.com/random${params ? `?${params}` : ''}`)
+  const sampleFile = { id: 1, url: 'https://img.example.com/dl/file-id', file_name: 'cat.jpg', file_size: 1536, mime_type: 'image/jpeg', width: 640, height: 480, created_at: 1_700_000_000_000 }
+
+  it('redirects to a random image', async () => {
+    const response = await randomImage(randomUrl(), makeConfig(sampleFile))
+    expect(response.status).toBe(302)
+    expect(response.headers.get('Location')).toBe('https://img.example.com/dl/file-id')
+    expect(response.headers.get('Cache-Control')).toBe('no-store')
+  })
+
+  it('returns image metadata as JSON when json flag is present', async () => {
+    const response = await randomImage(randomUrl('json'), makeConfig(sampleFile))
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.url).toBe('https://img.example.com/dl/file-id')
+    expect(data.file_name).toBe('cat.jpg')
+    expect(data.sizeLabel).toBe('1.5 KB')
+    expect(data.width).toBe(640)
+  })
+
+  it('filters landscape images only', async () => {
+    let sql = ''
+    const response = await randomImage(randomUrl('o=h'), makeConfig(sampleFile, query => { sql = query }))
+    expect(response.status).toBe(302)
+    expect(sql).toContain('width >= height')
+  })
+
+  it('filters portrait images and combines with the json flag', async () => {
+    let sql = ''
+    const response = await randomImage(randomUrl('o=v&json'), makeConfig(sampleFile, query => { sql = query }))
+    expect(response.status).toBe(200)
+    expect(sql).toContain('width <= height')
+    const data = await response.json()
+    expect(data.url).toBe('https://img.example.com/dl/file-id')
+  })
+
+  it('accepts uppercase orientation values', async () => {
+    let sql = ''
+    const response = await randomImage(randomUrl('o=H'), makeConfig(sampleFile, query => { sql = query }))
+    expect(response.status).toBe(302)
+    expect(sql).toContain('width >= height')
+  })
+
+  it('rejects unsupported orientation values', async () => {
+    await expect(randomImage(randomUrl('o=square'), makeConfig(sampleFile))).rejects.toMatchObject({ status: 400 })
+  })
+
+  it('returns 404 when there are no images', async () => {
+    await expect(randomImage(randomUrl(), makeConfig(null))).rejects.toMatchObject({ status: 404 })
   })
 })
 

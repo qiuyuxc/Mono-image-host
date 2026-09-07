@@ -99,12 +99,6 @@ createServer(async (request, response) => {
     }
     const session = sessionFor(request)
     if (url.pathname === '/api/session') return json(response, session ? { authenticated: true, csrf: session.csrf } : { authenticated: false })
-    if (!session) return json(response, { error: '会话已过期，请重新登录。' }, 401)
-    if (url.pathname === '/api/auth/logout' && request.method === 'POST') {
-      if (!requireMutation(request, session)) return json(response, { error: '安全校验失败。' }, 403)
-      sessions.delete(session.id)
-      return json(response, { ok: true }, 200, { 'Set-Cookie': 'mono_local=; Path=/; Max-Age=0' })
-    }
     if (url.pathname === '/api/files' && request.method === 'GET') {
       const cursor = url.searchParams.get('cursor') ? JSON.parse(Buffer.from(url.searchParams.get('cursor'), 'base64url')) : null
       const rows = cursor
@@ -114,6 +108,24 @@ createServer(async (request, response) => {
       const selected = rows.slice(0, 24).map(file => ({ ...file, sizeLabel: formatSize(file.file_size) }))
       const last = selected.at(-1)
       return json(response, { files: selected, nextCursor: hasMore ? Buffer.from(JSON.stringify({ createdAt: last.created_at, id: last.id })).toString('base64url') : null })
+    }
+    if (url.pathname === '/random' && request.method === 'GET') {
+      const orientation = url.searchParams.get('o')?.toLowerCase()
+      if (orientation && !['h', 'v'].includes(orientation)) return json(response, { error: 'o 仅支持 h（横图）或 v（竖图）。' }, 400)
+      const orientationFilter = orientation === 'h' ? ' AND width >= height' : orientation === 'v' ? ' AND width <= height' : ''
+      const file = database.prepare(`SELECT * FROM files WHERE mime_type LIKE 'image/%'${orientationFilter} ORDER BY RANDOM() LIMIT 1`).get()
+      if (!file) return json(response, { error: '还没有图片。' }, 404)
+      if (url.searchParams.has('json')) {
+        return json(response, { url: file.url, file_name: file.file_name, sizeLabel: formatSize(file.file_size), mime_type: file.mime_type, width: file.width, height: file.height, created_at: file.created_at })
+      }
+      response.writeHead(302, { Location: file.url, 'Cache-Control': 'no-store' })
+      return response.end()
+    }
+    if (!session) return json(response, { error: '会话已过期，请重新登录。' }, 401)
+    if (url.pathname === '/api/auth/logout' && request.method === 'POST') {
+      if (!requireMutation(request, session)) return json(response, { error: '安全校验失败。' }, 403)
+      sessions.delete(session.id)
+      return json(response, { ok: true }, 200, { 'Set-Cookie': 'mono_local=; Path=/; Max-Age=0' })
     }
     if (url.pathname === '/api/files' && request.method === 'POST') {
       if (!requireMutation(request, session)) return json(response, { error: '安全校验失败。' }, 403)
